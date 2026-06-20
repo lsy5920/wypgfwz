@@ -22,3 +22,6 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# 线上数据库本地备份，包含用户填写内容，严禁提交到 GitHub
+database-backups/

@@ -84,12 +84,25 @@ const normalizeMemberRole = (value: unknown, fallback = "同门") => {
   return ["同门", "执事"].includes(role) ? role : fallback;
 };
 
+const normalizeEventType = (value: unknown, fallback = "online") => {
+  const type = String(value ?? "").trim();
+  if (["online", "线上"].includes(type)) return "online";
+  if (["offline", "线下"].includes(type)) return "offline";
+  return fallback;
+};
+
 const JOIN_APPLICATION_COLUMNS = new Set([
   "id",
+  "dao_name",
   "nickname",
+  "contact",
   "wechat_id",
+  "birth_month",
   "age_range",
   "city",
+  "interests",
+  "declaration",
+  "join_reason",
   "reason",
   "accept_rules",
   "status",
@@ -151,21 +164,27 @@ const joinApplicationPayload = (
 
   return pickColumns(JOIN_APPLICATION_COLUMNS, {
     user_id: source.user_id,
+    dao_name: nickname,
     nickname,
     requested_nickname: source.requested_nickname,
     jianghu_name: source.jianghu_name,
     real_name: source.real_name,
     gender: firstText([source.gender], "未填写"),
+    birth_month: ageRange,
     age_range: ageRange,
     city: region,
     public_region: publicRegion,
     raw_region: firstText([source.raw_region, source.city, source.public_region], region),
+    contact,
     wechat_id: contact,
     legacy_contact: contact,
     requested_legacy_contact: source.requested_legacy_contact,
+    interests: firstText([source.interests, source.tags], ""),
     tags: firstText([source.interests, source.tags], ""),
+    declaration: motto,
     motto,
     companion_expectation: source.companion_expectation,
+    join_reason: reason,
     reason,
     accept_rules: source.accept_rules ?? true,
     status: source.status ?? "pending",
@@ -183,6 +202,37 @@ const joinApplicationPayload = (
     reviewed_at: source.reviewed_at,
     ...extra,
   });
+};
+
+const normalizeApplicationRecord = (item: any) => {
+  if (!item) return item;
+  const daoName = firstText([item.dao_name, item.nickname, item.requested_nickname], "");
+  const contact = firstText([item.contact, item.wechat_id, item.legacy_contact, item.requested_legacy_contact], "");
+  const birthMonth = firstText([item.birth_month, item.age_range], "");
+  const interests = firstText([item.interests, item.tags], "");
+  const declaration = firstText([item.declaration, item.motto], "");
+  const joinReason = firstText([item.join_reason, item.reason], "");
+  return {
+    ...item,
+    dao_name: daoName,
+    nickname: firstText([item.nickname, daoName], ""),
+    contact,
+    birth_month: birthMonth,
+    interests,
+    declaration,
+    join_reason: joinReason,
+  };
+};
+
+const normalizeEventRecord = (item: any) => {
+  if (!item) return item;
+  const eventType = normalizeEventType(item.event_type ?? item.mode ?? item.type);
+  return {
+    ...item,
+    event_date: firstText([item.event_date, item.event_time], ""),
+    event_type: eventType,
+    organizer: firstText([item.organizer], ""),
+  };
 };
 
 const missingColumnName = (error: any) => {
