@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
-import { CheckCircle, X, Plus, Trash2, AlertTriangle, Users, Bell, CalendarDays, Shield, Eye, Crown } from "lucide-react";
+import { CheckCircle, X, Plus, Trash2, AlertTriangle, Users, Bell, CalendarDays, Shield, Eye, Crown, Search } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { useAuth } from "../context/AuthContext";
 import { API, authHeaders } from "../lib/supabase";
 import { isAdminProfile, isSectLeaderProfile } from "../lib/permissions";
@@ -71,6 +71,62 @@ const statusLabel = (status: string) => {
   return status || "—";
 };
 
+const normalizeSearchText = (value: any) => String(value ?? "").trim().toLowerCase();
+
+const matchesSearch = (query: string, values: any[]) => {
+  const keyword = normalizeSearchText(query);
+  if (!keyword) return true;
+  return values.some((value) => normalizeSearchText(value).includes(keyword));
+};
+
+const applicationMatchesSearch = (application: any, query: string) => {
+  const form = applicationToForm(application);
+  return matchesSearch(query, [
+    form.dao_name,
+    form.jianghu_name,
+    form.real_name,
+    form.gender,
+    form.birth_month,
+    form.city,
+    form.public_region,
+    form.contact,
+    form.interests,
+    form.tags,
+    form.declaration,
+    form.motto,
+    form.companion_expectation,
+    form.join_reason,
+    form.admin_note,
+    application.status,
+    statusLabel(application.status),
+  ]);
+};
+
+const memberMatchesSearch = (member: any, query: string) => {
+  const form = memberToForm(member);
+  return matchesSearch(query, [
+    member.member_code,
+    form.dao_name,
+    form.jianghu_name,
+    form.real_name,
+    form.gender,
+    form.birth_month,
+    form.city,
+    form.public_region,
+    form.contact,
+    form.interests,
+    form.tags,
+    form.declaration,
+    form.motto,
+    form.companion_expectation,
+    form.join_reason,
+    form.admin_note,
+    form.member_role,
+    form.status,
+    statusLabel(form.status),
+  ]);
+};
+
 export const AdminPanel = () => {
   const { user, session, profile } = useAuth();
   const [tab, setTab] = useState<AdminTab>("applications");
@@ -88,6 +144,8 @@ export const AdminPanel = () => {
   const [memberForm, setMemberForm] = useState(memberToForm(null));
   const [saving, setSaving] = useState(false);
   const [actionMsg, setActionMsg] = useState("");
+  const [applicationSearch, setApplicationSearch] = useState("");
+  const [memberSearch, setMemberSearch] = useState("");
 
   const isAdmin = isAdminProfile(profile);
   const isSectLeader = isSectLeaderProfile(profile);
@@ -268,11 +326,18 @@ export const AdminPanel = () => {
     </div>
   );
 
+  // 入册申请页只承接未进入正式名册的记录，已通过成员统一放到“全体成员”页管理。
+  const visibleApplications = applications.filter((app) => app.status !== "approved");
+  const filteredApplications = visibleApplications.filter((app) => applicationMatchesSearch(app, applicationSearch));
+  // 接口本身已限定已通过成员，这里再兜底一次，防止旧数据或接口调整导致状态混入。
+  const approvedMembers = allMembers.filter((member) => (member.status || "approved") === "approved");
+  const filteredMembers = approvedMembers.filter((member) => memberMatchesSearch(member, memberSearch));
+
   const tabs: { key: AdminTab; label: string; icon: any; count?: number }[] = [
-    { key: "applications", label: "入册申请", icon: CheckCircle, count: applications.filter(a => a.status === "pending").length },
+    { key: "applications", label: "入册申请", icon: CheckCircle, count: visibleApplications.length },
     { key: "announcements", label: "公告管理", icon: Bell, count: announcements.length },
     { key: "events", label: "活动管理", icon: CalendarDays, count: events.length },
-    { key: "members", label: "全体成员", icon: Users, count: allMembers.length },
+    { key: "members", label: "全体成员", icon: Users, count: approvedMembers.length },
   ];
 
   return (
@@ -314,9 +379,20 @@ export const AdminPanel = () => {
 
       {tab === "applications" && (
         <div className="space-y-3">
-          {applications.length === 0 ? (
-            <div className="text-center py-16 text-[var(--ink-mid)]/60">暂无申请</div>
-          ) : applications.map((app) => {
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-mid)]/60" />
+            <Input
+              value={applicationSearch}
+              onChange={(e) => setApplicationSearch(e.target.value)}
+              placeholder="搜索道名、江湖名、城市、联系方式或状态"
+              className="h-10 bg-white/70 pl-9 border-[var(--ink-deep)]/20"
+            />
+          </div>
+          {visibleApplications.length === 0 ? (
+            <div className="text-center py-16 text-[var(--ink-mid)]/60">暂无待处理或未通过申请</div>
+          ) : filteredApplications.length === 0 ? (
+            <div className="text-center py-16 text-[var(--ink-mid)]/60">没有匹配的申请</div>
+          ) : filteredApplications.map((app) => {
             const form = applicationToForm(app);
             return (
               <div key={app.id} className={`bg-[var(--ink-parchment)] rounded-2xl p-5 border ${app.status === "pending" ? "border-[var(--ink-gold)]/30" : "border-[var(--ink-deep)]/8"}`}>
@@ -470,13 +546,27 @@ export const AdminPanel = () => {
 
       {tab === "members" && (
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-xs text-[var(--ink-mid)]">共 {allMembers.length} 位同门</p>
+          <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs text-[var(--ink-mid)]">共 {approvedMembers.length} 位已通过同门</p>
+              {memberSearch && <p className="mt-1 text-xs text-[var(--ink-mid)]/70">当前筛选出 {filteredMembers.length} 位</p>}
+            </div>
             {isSectLeader && <p className="text-xs text-[var(--ink-gold)]">宗主可任免执事</p>}
+          </div>
+          <div className="relative mb-4">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-mid)]/60" />
+            <Input
+              value={memberSearch}
+              onChange={(e) => setMemberSearch(e.target.value)}
+              placeholder="搜索编号、道名、江湖名、城市、联系方式或角色"
+              className="h-10 bg-white/70 pl-9 border-[var(--ink-deep)]/20"
+            />
           </div>
 
           <div className="space-y-3 md:hidden">
-            {allMembers.map(m => (
+            {filteredMembers.length === 0 ? (
+              <div className="text-center py-10 text-[var(--ink-mid)]/60 text-sm">没有匹配的成员</div>
+            ) : filteredMembers.map(m => (
               <div key={m.id} className="bg-[var(--ink-parchment)] rounded-2xl p-4 border border-[var(--ink-deep)]/8">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -531,7 +621,11 @@ export const AdminPanel = () => {
                 </tr>
               </thead>
               <tbody>
-                {allMembers.map(m => (
+                {filteredMembers.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-10 text-center text-[var(--ink-mid)]/60">没有匹配的成员</td>
+                  </tr>
+                ) : filteredMembers.map(m => (
                   <tr key={m.id} className="border-b border-[var(--ink-deep)]/5 hover:bg-[var(--ink-deep)]/3">
                     <td className="py-2 pr-4 font-mono text-[var(--ink-mid)]/70 whitespace-nowrap">{m.member_code}</td>
                     <td className="py-2 pr-4 font-serif font-medium text-[var(--ink-deep)] whitespace-nowrap">{m.dao_name}</td>
@@ -639,6 +733,9 @@ const EditDialog = ({
       <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden bg-[var(--ink-parchment)] p-0">
         <DialogHeader className="px-6 pt-6">
           <DialogTitle className="font-serif text-[var(--ink-deep)]">{title}</DialogTitle>
+          <DialogDescription>
+            核对并维护已保留的用户填写资料，保存后会同步到后台数据库。
+          </DialogDescription>
         </DialogHeader>
 
         {isApplicationDialog && (

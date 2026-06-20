@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -54,6 +54,13 @@ export const AuthModal = ({ open, onClose, defaultTab = "login" }: AuthModalProp
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-[420px] p-0 overflow-hidden border-[var(--ink-deep)]/20">
+        {/* 为弹窗补充屏幕阅读器标题，保持视觉设计不变，同时避免控制台可访问性警告。 */}
+        <DialogHeader className="sr-only">
+          <DialogTitle>{tab === "login" ? "登入问云" : "加入问云"}</DialogTitle>
+          <DialogDescription>
+            {tab === "login" ? "使用邮箱和密码登入问云派账号。" : "填写邮箱、密码、道名和城市，创建问云派账号。"}
+          </DialogDescription>
+        </DialogHeader>
         <div className="bg-[var(--ink-parchment)]">
           {/* 顶部标题 */}
           <div className="text-center py-6 px-6 border-b border-[var(--ink-deep)]/10">
