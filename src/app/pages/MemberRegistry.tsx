@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
-import { Users, MapPin, Search, Scroll, CheckCircle, Clock, X, AlertCircle } from "lucide-react";
+import { Users, MapPin, Search, Scroll, CheckCircle, Clock, X, AlertCircle, LogIn } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { AuthModal } from "../components/AuthModal";
 import { useAuth } from "../context/AuthContext";
 import { API, anonHeaders, authHeaders } from "../lib/supabase";
 
@@ -21,10 +22,12 @@ export const MemberRegistry = () => {
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [quizPassed, setQuizPassed] = useState(false);
+  const [entryLoading, setEntryLoading] = useState(false);
   const [myApplication, setMyApplication] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
 
   // 入册表单状态
   const [form, setForm] = useState({
@@ -38,13 +41,23 @@ export const MemberRegistry = () => {
       .then(r => r.json())
       .then(d => { setMembers(d.members ?? []); setLoading(false); });
 
+    // 公开名册始终可浏览，下面只刷新当前登录用户的登记入口状态。
+    setQuizPassed(false);
+    setMyApplication(null);
+    setShowForm(false);
+    setSubmitSuccess(false);
+    setSubmitError("");
+    setEntryLoading(Boolean(user && session));
+
     if (user && session) {
-      fetch(`${API}/quiz-result`, { headers: authHeaders(session.access_token) })
-        .then(r => r.json())
-        .then(d => setQuizPassed(d.result?.passed ?? false));
-      fetch(`${API}/my-application`, { headers: authHeaders(session.access_token) })
-        .then(r => r.json())
-        .then(d => setMyApplication(d.application));
+      Promise.all([
+        fetch(`${API}/quiz-result`, { headers: authHeaders(session.access_token) })
+          .then(r => r.json())
+          .then(d => setQuizPassed(d.result?.passed ?? false)),
+        fetch(`${API}/my-application`, { headers: authHeaders(session.access_token) })
+          .then(r => r.json())
+          .then(d => setMyApplication(d.application)),
+      ]).finally(() => setEntryLoading(false));
     }
   }, [user, session]);
 
@@ -130,7 +143,12 @@ export const MemberRegistry = () => {
             placeholder="搜索道名、城市…"
             className="pl-9 bg-white/70 border-[var(--ink-deep)]/20" />
         </div>
-        {user && !myApplication && (
+        {user && entryLoading && (
+          <Button disabled variant="outline" className="border-[var(--ink-deep)]/20 text-[var(--ink-mid)] text-sm">
+            登记状态加载中…
+          </Button>
+        )}
+        {user && !entryLoading && !myApplication && (
           quizPassed ? (
             <Button onClick={() => setShowForm(!showForm)}
               className="bg-[var(--ink-gold)] hover:bg-[var(--ink-gold)]/90 text-white text-sm">
@@ -145,9 +163,15 @@ export const MemberRegistry = () => {
           )
         )}
         {!user && (
-          <p className="text-xs text-[var(--ink-mid)]">登录后可申请入册</p>
+          <Button onClick={() => setAuthOpen(true)} variant="outline"
+            className="border-[var(--ink-deep)]/20 text-[var(--ink-mid)] text-sm">
+            <LogIn className="w-4 h-4 mr-2" /> 登录后登记入册
+          </Button>
         )}
       </div>
+      {!user && (
+        <p className="-mt-3 mb-6 text-xs text-[var(--ink-mid)]/80">公开名册可直接浏览，填写入册资料需要先登录并通过问心考核。</p>
+      )}
 
       {/* 入册表单 */}
       {showForm && quizPassed && (
@@ -222,6 +246,7 @@ export const MemberRegistry = () => {
           </form>
         </div>
       )}
+      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} defaultTab="login" />
 
       {/* 成员列表 */}
       {loading ? (

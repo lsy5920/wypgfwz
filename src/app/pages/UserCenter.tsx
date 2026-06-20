@@ -23,6 +23,9 @@ export const UserCenter = () => {
   const canVisitAdmin = isAdminProfile(profile);
 
   useEffect(() => {
+    // 用户切换时先清空上一位同门的状态，避免接口返回前短暂显示旧考核或旧入册信息。
+    setQuizResult(null);
+    setApplication(null);
     if (!user || !session) return;
     fetch(`${API}/quiz-result`, { headers: authHeaders(session.access_token) })
       .then(r => r.json()).then(d => setQuizResult(d.result));

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
-import { CheckCircle, XCircle, ArrowRight, Feather, AlertCircle } from "lucide-react";
+import { BookOpen, CheckCircle, ChevronLeft, ChevronRight, Feather, LogIn, AlertCircle } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { AuthModal } from "../components/AuthModal";
 import { questions, PASS_SCORE, TOTAL_QUESTIONS } from "../lib/assessmentQuestions";
 import { useAuth } from "../context/AuthContext";
 import { API, authHeaders } from "../lib/supabase";
@@ -14,12 +15,21 @@ export const Assessment = () => {
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [score, setScore] = useState(0);
   const [passed, setPassed] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [prevResult, setPrevResult] = useState<any>(null);
   const [loadingPrev, setLoadingPrev] = useState(true);
+  const [saveError, setSaveError] = useState("");
+  const [authOpen, setAuthOpen] = useState(false);
 
   useEffect(() => {
+    setSaveError("");
+    setPhase("intro");
+    setAnswers({});
+    setCurrentIndex(0);
+    setPrevResult(null);
     if (!user || !session) { setLoadingPrev(false); return; }
+    setLoadingPrev(true);
     fetch(`${API}/quiz-result`, { headers: authHeaders(session.access_token) })
       .then(r => r.json())
       .then(d => { setPrevResult(d.result); setLoadingPrev(false); })
@@ -31,7 +41,26 @@ export const Assessment = () => {
     setAnswers(prev => ({ ...prev, [qId]: optIdx }));
   };
 
+  const beginQuiz = () => {
+    setAnswers({});
+    setScore(0);
+    setPassed(false);
+    setSaveError("");
+    setCurrentIndex(0);
+    setPhase("quiz");
+  };
+
+  const goNext = () => {
+    if (currentIndex < TOTAL_QUESTIONS - 1) setCurrentIndex(i => i + 1);
+  };
+
+  const goPrev = () => {
+    if (currentIndex > 0) setCurrentIndex(i => i - 1);
+  };
+
   const handleSubmit = async () => {
+    setSaveError("");
+    if (Object.keys(answers).length < TOTAL_QUESTIONS) return;
     const correctCount = questions.filter(q => answers[q.id] === q.answer).length;
     const finalScore = Math.round((correctCount / TOTAL_QUESTIONS) * 100);
     const didPass = finalScore >= PASS_SCORE;
@@ -42,27 +71,45 @@ export const Assessment = () => {
     if (user && session) {
       setSubmitting(true);
       try {
-        await fetch(`${API}/quiz-result`, {
+        const res = await fetch(`${API}/quiz-result`, {
           method: "POST",
           headers: authHeaders(session.access_token),
-          body: JSON.stringify({ score: finalScore, passed: didPass }),
+          body: JSON.stringify({
+            score: finalScore,
+            total_score: 100,
+            passed: didPass,
+            single_correct: correctCount,
+            multiple_correct: 0,
+            answers,
+          }),
         });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          setSaveError(data.error || "考核结果保存失败，请稍后重试");
+          return;
+        }
         setPrevResult({ score: finalScore, passed: didPass });
       } catch (e) {
         console.log("save quiz result error:", e);
+        setSaveError("考核结果保存失败，请检查网络后重试");
+      } finally {
+        setSubmitting(false);
       }
-      setSubmitting(false);
     }
   };
 
   const answered = Object.keys(answers).length;
-  const canSubmit = answered === TOTAL_QUESTIONS;
+  const currentQuestion = questions[currentIndex];
+  const currentAnswer = currentQuestion ? answers[currentQuestion.id] : undefined;
+  const canGoNext = currentAnswer !== undefined;
+  const canSubmit = answered === TOTAL_QUESTIONS && currentAnswer !== undefined;
+  const progress = Math.round(((currentIndex + 1) / TOTAL_QUESTIONS) * 100);
 
   if (loadingPrev) return <div className="flex items-center justify-center py-32 text-[var(--ink-mid)]">加载中…</div>;
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-12">
-      {/* Header */}
+      {/* 页面标题 */}
       <div className="text-center mb-10">
         <div className="inline-flex items-center gap-2 mb-3 text-xs tracking-widest text-[var(--ink-gold)]">
           <Feather className="w-3.5 h-3.5" /> <span>问心考核</span>
@@ -71,8 +118,33 @@ export const Assessment = () => {
         <p className="mt-2 text-sm text-[var(--ink-mid)]">以金典为镜，照见入派初心</p>
       </div>
 
-      {/* Previous Result Banner */}
-      {prevResult && phase === "intro" && (
+      {/* 未登录时只展示登录引导，不提前展示题目。 */}
+      {!user && phase === "intro" && (
+        <div className="bg-[var(--ink-parchment)] rounded-2xl p-8 border border-[var(--ink-deep)]/8 text-center">
+          <div className="w-14 h-14 mx-auto rounded-full bg-[var(--ink-gold)]/15 flex items-center justify-center mb-4">
+            <LogIn className="w-7 h-7 text-[var(--ink-gold)]" />
+          </div>
+          <h3 className="font-serif text-xl font-medium text-[var(--ink-deep)] mb-3">请先登录再参加考核</h3>
+          <p className="text-sm text-[var(--ink-mid)] leading-relaxed mb-6">
+            问心考核结果需要保存到您的问云账号。登录后即可逐题作答，通过后可继续申请登记入册。
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button onClick={() => setAuthOpen(true)}
+              className="flex-1 bg-[var(--ink-gold)] hover:bg-[var(--ink-gold)]/90 text-white text-sm">
+              <LogIn className="w-4 h-4 mr-2" /> 登录后考核
+            </Button>
+            <Link to="/charter" className="flex-1">
+              <Button variant="outline" className="w-full border-[var(--ink-deep)]/20 text-[var(--ink-deep)] text-sm">
+                <BookOpen className="w-4 h-4 mr-2" /> 先读金典
+              </Button>
+            </Link>
+          </div>
+          <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} defaultTab="login" />
+        </div>
+      )}
+
+      {/* 历史成绩提示 */}
+      {user && prevResult && phase === "intro" && (
         <div className={`mb-6 p-4 rounded-2xl flex items-center gap-3 ${prevResult.passed
           ? "bg-[var(--ink-green)]/10 border border-[var(--ink-green)]/20"
           : "bg-[var(--ink-gold)]/10 border border-[var(--ink-gold)]/20"
@@ -92,15 +164,15 @@ export const Assessment = () => {
           {prevResult.passed && (
             <Link to="/members" className="ml-auto shrink-0">
               <Button size="sm" className="bg-[var(--ink-green)] hover:bg-[var(--ink-green)]/90 text-white text-xs">
-                去登记 <ArrowRight className="w-3 h-3 ml-1" />
+                去登记 <ChevronRight className="w-3 h-3 ml-1" />
               </Button>
             </Link>
           )}
         </div>
       )}
 
-      {/* Intro Phase */}
-      {phase === "intro" && (
+      {/* 考核说明 */}
+      {user && phase === "intro" && (
         <div className="bg-[var(--ink-parchment)] rounded-2xl p-8 border border-[var(--ink-deep)]/8">
           <h3 className="font-serif text-lg font-medium text-[var(--ink-deep)] mb-4">考核说明</h3>
           <ul className="space-y-2 text-sm text-[var(--ink-mid)] leading-relaxed mb-6">
@@ -121,119 +193,95 @@ export const Assessment = () => {
               建议先阅读《立派金典》再作答
             </li>
           </ul>
-          {!user && (
-            <div className="mb-4 p-3 bg-[var(--ink-gold)]/10 rounded-xl text-xs text-[var(--ink-gold)]">
-              请先登录，以保存您的考核结果
-            </div>
-          )}
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <Link to="/charter" className="flex-1">
               <Button variant="outline" className="w-full border-[var(--ink-deep)]/20 text-[var(--ink-deep)] text-sm">
-                先读金典
+                <BookOpen className="w-4 h-4 mr-2" /> 先读金典
               </Button>
             </Link>
-            <Button onClick={() => setPhase("quiz")} className="flex-1 bg-[var(--ink-gold)] hover:bg-[var(--ink-gold)]/90 text-white text-sm">
+            <Button onClick={beginQuiz} className="flex-1 bg-[var(--ink-gold)] hover:bg-[var(--ink-gold)]/90 text-white text-sm">
               开始考核
             </Button>
           </div>
         </div>
       )}
 
-      {/* Quiz Phase */}
-      {phase === "quiz" && (
+      {/* 单题作答 */}
+      {user && phase === "quiz" && currentQuestion && (
         <div className="space-y-5">
           <div className="flex items-center justify-between text-xs text-[var(--ink-mid)] mb-2">
-            <span>已答 {answered} / {TOTAL_QUESTIONS} 题</span>
-            <div className="w-32 h-1.5 rounded-full bg-[var(--ink-deep)]/10 overflow-hidden">
-              <div className="h-full rounded-full bg-[var(--ink-gold)] transition-all" style={{ width: `${(answered / TOTAL_QUESTIONS) * 100}%` }} />
+            <span>第 {currentIndex + 1} / {TOTAL_QUESTIONS} 题</span>
+            <div className="flex items-center gap-2">
+              <span>已答 {answered} 题</span>
+              <div className="w-28 h-1.5 rounded-full bg-[var(--ink-deep)]/10 overflow-hidden">
+                <div className="h-full rounded-full bg-[var(--ink-gold)] transition-all" style={{ width: `${progress}%` }} />
+              </div>
             </div>
           </div>
 
-          {questions.map((q, qi) => (
-            <div key={q.id} className={`bg-[var(--ink-parchment)] rounded-2xl p-6 border transition-all ${answers[q.id] !== undefined
+          <div className={`bg-[var(--ink-parchment)] rounded-2xl p-6 border transition-all ${currentAnswer !== undefined
               ? "border-[var(--ink-gold)]/30" : "border-[var(--ink-deep)]/8"
               }`}>
-              <p className="font-medium text-[var(--ink-deep)] text-sm mb-4 leading-relaxed">
-                <span className="text-[var(--ink-gold)] mr-2">{qi + 1}.</span>{q.question}
-              </p>
-              <div className="space-y-2">
-                {q.options.map((opt, oi) => (
-                  <button key={oi} onClick={() => handleAnswer(q.id, oi)}
-                    className={`w-full text-left px-4 py-2.5 rounded-xl text-sm transition-all ${answers[q.id] === oi
-                      ? "bg-[var(--ink-gold)]/20 border border-[var(--ink-gold)]/50 text-[var(--ink-deep)] font-medium"
-                      : "bg-white/50 border border-[var(--ink-deep)]/8 text-[var(--ink-mid)] hover:border-[var(--ink-deep)]/20 hover:bg-white/80"
-                      }`}>
-                    <span className="text-[var(--ink-gold)]/70 mr-2">{["A", "B", "C", "D"][oi]}.</span>{opt}
-                  </button>
-                ))}
-              </div>
+            <p className="font-medium text-[var(--ink-deep)] text-sm mb-4 leading-relaxed">
+              <span className="text-[var(--ink-gold)] mr-2">{currentIndex + 1}.</span>{currentQuestion.question}
+            </p>
+            <div className="space-y-2">
+              {currentQuestion.options.map((opt, oi) => (
+                <button key={oi} onClick={() => handleAnswer(currentQuestion.id, oi)}
+                  className={`w-full text-left px-4 py-3 rounded-xl text-sm transition-all ${currentAnswer === oi
+                    ? "bg-[var(--ink-gold)]/20 border border-[var(--ink-gold)]/50 text-[var(--ink-deep)] font-medium"
+                    : "bg-white/50 border border-[var(--ink-deep)]/8 text-[var(--ink-mid)] hover:border-[var(--ink-deep)]/20 hover:bg-white/80"
+                    }`}>
+                  <span className="text-[var(--ink-gold)]/70 mr-2">{["A", "B", "C", "D"][oi]}.</span>{opt}
+                </button>
+              ))}
             </div>
-          ))}
+          </div>
 
-          <Button onClick={handleSubmit} disabled={!canSubmit || submitting}
-            className="w-full bg-[var(--ink-deep)] hover:bg-[var(--ink-mid)] text-[var(--ink-parchment)] py-3">
-            {submitting ? "提交中…" : canSubmit ? "提交答案" : `还有 ${TOTAL_QUESTIONS - answered} 题未作答`}
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button variant="outline" onClick={goPrev} disabled={currentIndex === 0}
+              className="sm:w-28 border-[var(--ink-deep)]/20 text-[var(--ink-deep)]">
+              <ChevronLeft className="w-4 h-4 mr-1" /> 上一题
+            </Button>
+            {currentIndex < TOTAL_QUESTIONS - 1 ? (
+              <Button onClick={goNext} disabled={!canGoNext}
+                className="flex-1 bg-[var(--ink-deep)] hover:bg-[var(--ink-mid)] text-[var(--ink-parchment)] py-3">
+                下一题 <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            ) : (
+              <Button onClick={handleSubmit} disabled={!canSubmit || submitting}
+                className="flex-1 bg-[var(--ink-deep)] hover:bg-[var(--ink-mid)] text-[var(--ink-parchment)] py-3">
+                {submitting ? "提交中…" : canSubmit ? "提交答案" : "请先作答本题"}
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Result Phase */}
-      {phase === "result" && (
+      {/* 结果页只显示分数和金典阅读入口，不展示题目答案。 */}
+      {user && phase === "result" && (
         <div className="text-center">
-          <div className={`inline-flex items-center justify-center w-24 h-24 rounded-full mb-6 ${passed
-            ? "bg-[var(--ink-green)]/15" : "bg-red-50"
-            }`}>
-            {passed
-              ? <CheckCircle className="w-12 h-12 text-[var(--ink-green)]" />
-              : <XCircle className="w-12 h-12 text-red-400" />
-            }
+          <div className="inline-flex items-center justify-center w-24 h-24 rounded-full mb-6 bg-[var(--ink-gold)]/15">
+            <Feather className="w-12 h-12 text-[var(--ink-gold)]" />
           </div>
           <h2 className="font-serif text-2xl font-bold text-[var(--ink-deep)] mb-2">
-            {passed ? "问心有得，恭喜通过" : "缘未至，再研金典"}
+            本次问心得分
           </h2>
           <p className="text-4xl font-bold text-[var(--ink-gold)] my-4">{score}<span className="text-lg text-[var(--ink-mid)] ml-1">分</span></p>
-          <p className="text-sm text-[var(--ink-mid)] mb-2">
-            答对 {questions.filter(q => answers[q.id] === q.answer).length} / {TOTAL_QUESTIONS} 题
+          <p className="text-sm text-[var(--ink-mid)] mb-8 leading-relaxed">
+            问心之后，可回到《立派金典》继续温习门派约定，再按自己的节奏前往名册登记。
           </p>
-          <p className="text-sm text-[var(--ink-mid)] mb-8">
-            {passed ? "您已通过问心考核，可前往名册登记入册" : `需达${PASS_SCORE}分方可通过，建议重读《立派金典》后再试`}
-          </p>
+          {saveError && (
+            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-500">
+              {saveError}
+            </div>
+          )}
 
-          {/* Correct/Wrong Review */}
-          <div className="text-left space-y-2 mb-8">
-            {questions.map((q, qi) => {
-              const userAns = answers[q.id];
-              const correct = userAns === q.answer;
-              return (
-                <div key={q.id} className={`p-3 rounded-xl text-xs flex items-start gap-2 ${correct ? "bg-[var(--ink-green)]/8" : "bg-red-50"}`}>
-                  {correct
-                    ? <CheckCircle className="w-3.5 h-3.5 text-[var(--ink-green)] shrink-0 mt-0.5" />
-                    : <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
-                  }
-                  <div>
-                    <p className="text-[var(--ink-deep)] font-medium mb-0.5">{qi + 1}. {q.question}</p>
-                    {!correct && (
-                      <p className="text-red-500">正确答案：{q.options[q.answer]}</p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={() => { setPhase("intro"); setAnswers({}); }}
-              className="flex-1 border-[var(--ink-deep)]/20 text-[var(--ink-deep)]">
-              {passed ? "再次作答" : "重新考核"}
+          <Link to="/charter">
+            <Button className="bg-[var(--ink-gold)] hover:bg-[var(--ink-gold)]/90 text-white">
+              <BookOpen className="w-4 h-4 mr-2" /> 阅读立派金典
             </Button>
-            {passed && (
-              <Link to="/members" className="flex-1">
-                <Button className="w-full bg-[var(--ink-gold)] hover:bg-[var(--ink-gold)]/90 text-white">
-                  前往登记入册
-                </Button>
-              </Link>
-            )}
-          </div>
+          </Link>
         </div>
       )}
     </div>
