@@ -443,6 +443,7 @@ app.post("/make-server-0e17939c/quiz-result", async (c) => {
   try {
     const user = await getUser(c.req.header("Authorization"));
     if (!user) return c.json({ error: "unauthorized" }, 401 as any);
+    const supabase = adminClient();
     const body = await c.req.json();
     const score = Number(body.score ?? 0);
     const totalScore = Number(body.total_score ?? body.totalScore ?? 100);
@@ -450,22 +451,40 @@ app.post("/make-server-0e17939c/quiz-result", async (c) => {
     const singleCorrect = Number(body.single_correct ?? body.singleCorrect ?? 0);
     const multipleCorrect = Number(body.multiple_correct ?? body.multipleCorrect ?? 0);
     const answers = body.answers ?? {};
-    // 线上旧表存在 total_score、single_correct、multiple_correct、answers 等字段，写入完整默认值避免静默保存失败。
-    const { error } = await writeWithColumnFallback(
-      {
-        user_id: user.id,
-        score,
-        total_score: totalScore,
-        passed,
-        single_correct: singleCorrect,
-        multiple_correct: multipleCorrect,
-        answers,
-        created_at: new Date().toISOString(),
-      },
-      (payload) => adminClient()
-        .from("wenxin_quiz_results")
-        .upsert(payload, { onConflict: "user_id" }),
-    );
+    const payload = {
+      user_id: user.id,
+      score,
+      total_score: totalScore,
+      passed,
+      single_correct: singleCorrect,
+      multiple_correct: multipleCorrect,
+      answers,
+      created_at: new Date().toISOString(),
+    };
+    // 线上旧表不一定存在 user_id 唯一约束，因此不能依赖 upsert(onConflict: "user_id")。
+    // 这里先查最近一条本人考核记录，有则按 id 更新，没有再插入，兼容旧结构。
+    const { data: existingQuiz } = await supabase
+      .from("wenxin_quiz_results")
+      .select("id")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const { error } = existingQuiz?.id
+      ? await writeWithColumnFallback(
+        payload,
+        (nextPayload) => supabase
+          .from("wenxin_quiz_results")
+          .update(nextPayload)
+          .eq("id", existingQuiz.id),
+      )
+      : await writeWithColumnFallback(
+        payload,
+        (nextPayload) => supabase
+          .from("wenxin_quiz_results")
+          .insert(nextPayload),
+      );
     if (error) return c.json({ error: error.message }, 500 as any);
     return c.json({ success: true });
   } catch (e) {
