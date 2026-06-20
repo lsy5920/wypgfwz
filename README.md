@@ -128,9 +128,9 @@ NODE_VERSION=22.16.0
 9. 保存并部署。
 10. 以后只要把代码推送到 GitHub 主分支，Cloudflare Pages 就会自动重新构建并发布。
 
-本项目已经新增 `wrangler.toml`，其中声明了项目名、兼容日期和构建输出目录；同时新增 `.nvmrc` 与 `.node-version`，用于明确 Node.js 版本，减少云端构建环境差异。
+本项目不再提交 `wrangler.toml`。原因是 Cloudflare Pages 的配置文件不支持填写构建命令，容易导致平台读取配置文件后跳过构建步骤。请统一在 Cloudflare Pages 控制台填写构建命令和输出目录。
 
-注意：Cloudflare Pages 当前不支持在 `wrangler.toml` 中配置构建命令，所以 `npm run build` 必须在 Cloudflare Pages 控制台的构建设置里填写。如果控制台构建命令为空，Cloudflare 会跳过构建步骤，随后因为找不到 `dist` 目录而部署失败。
+注意：`npm run build` 必须在 Cloudflare Pages 控制台的构建设置里填写。如果控制台构建命令为空，Cloudflare 会跳过构建步骤，随后因为找不到 `dist` 目录而部署失败。
 
 ### 部署 Supabase 后端函数
 
@@ -161,6 +161,18 @@ $env:SUPABASE_ACCESS_TOKEN="你的_supabase_平台访问令牌"
 ```text
 https://bauvdyyrtobyxhamjiwk.supabase.co/functions/v1/make-server-0e17939c
 ```
+
+### 整理 Supabase 数据库结构
+
+本项目已根据当前网站功能整理了线上数据，用户填写过的入册资料、名册资料、考核记录、通知记录和旧云灯内容均已保留。服务端密钥只能安全读写表数据，不能直接执行删除字段或删除表的结构命令。
+
+如需进一步删除不再使用的空表和空字段，请先确认本机 `database-backups` 目录已经存在完整备份，然后进入 Supabase 控制台的 SQL 编辑器，复制执行：
+
+```text
+supabase/database-cleanup.sql
+```
+
+该脚本只删除当前网站不再使用且没有用户填写内容的结构，包括空表 `event_registrations`、`kv_store_0e17939c`，以及 `join_applications` 中已经全空的旧请求字段。
 
 ## 使用教程
 
@@ -203,7 +215,6 @@ wypgfwz
 ├─ .gitignore                 Git 上传忽略规则，避免提交依赖、构建产物和本地密钥
 ├─ .nvmrc                     Node.js 版本声明，方便部署平台识别运行版本
 ├─ .node-version              Node.js 版本声明，兼容更多版本管理工具
-├─ wrangler.toml              Cloudflare Pages 部署配置
 ├─ index.html                 网站入口页面
 ├─ package.json               项目脚本、依赖和版本配置
 ├─ package-lock.json          npm 依赖锁定文件，保证安装结果稳定
@@ -228,6 +239,7 @@ wypgfwz
 │  └─ functions
 │     ├─ server               后台业务代码统一维护目录
 │     └─ make-server-0e17939c 线上函数入口目录，保持前端接口地址可直接访问
+│  └─ database-cleanup.sql     数据库结构清理脚本，需在 Supabase SQL 编辑器中手动执行
 ├─ utils                      Supabase 项目信息配置
 ├─ guidelines                 项目辅助说明目录
 ├─ plans                      开发计划与需求记录目录
@@ -244,7 +256,11 @@ wypgfwz
 npm run build
 ```
 
-如果部署日志出现 `No build command specified. Skipping build step.`，说明 Cloudflare 控制台没有填写构建命令；只改 `wrangler.toml` 无法解决，因为 Pages 配置文件不支持 `build` 字段。
+如果部署日志出现 `No build command specified. Skipping build step.`，说明 Cloudflare 控制台没有填写构建命令。请在 Cloudflare Pages 控制台补充构建命令，不要通过 `wrangler.toml` 配置。
+
+### Cloudflare Pages 提示 wrangler.toml 不支持 build
+
+如果部署日志出现 `Configuration file for Pages projects does not support "build"`，说明仓库里存在带 `[build]` 配置的 `wrangler.toml`。本项目不需要提交 `wrangler.toml`，请删除该文件，然后在 Cloudflare 控制台里填写构建命令 `npm run build`、构建输出目录 `dist`。
 
 ### Cloudflare Pages 部署后页面空白
 
@@ -309,4 +325,5 @@ http://127.0.0.1:5174/
 2026-06-14 19:24 【优化】统一后台“查看”和“编辑”为一个可编辑详情入口；成员详情新增名册状态修改，可将正式成员改为审核通过或未通过；全体成员接口只返回已通过的正式成员，并在问云小院补充执事后台快捷入口。
 2026-06-14 19:07 【新增】完善执事后台管理能力，入册申请支持完整资料查看、编辑和审核，全体成员支持完整资料查看、编辑；新增宗主身份显示与宗主任命、撤销执事的前后端接口，同步更新 README 使用说明。
 2026-06-14 18:35 【修复】修复注册、考核题库、入册表单中的中文引号语法错误，解决网站启动后页面无法编译显示的问题；同步完善中文 README 文档，并固定 Supabase 依赖版本号。
-2026-06-20 13:56 【优化】适配 Cloudflare Pages 自动部署，新增 wrangler.toml、Node.js 版本文件、Git 忽略规则和 Cloudflare 响应头配置；调整 React 依赖为正式依赖，更新 README 中 GitHub 绑定 Cloudflare 的部署教程。
+2026-06-20 13:56 【优化】适配 Cloudflare Pages 自动部署，新增 Node.js 版本文件、Git 忽略规则和 Cloudflare 响应头配置；调整 React 依赖为正式依赖，更新 README 中 GitHub 绑定 Cloudflare 的部署教程。
+2026-06-20 14:25 【修复】修复 Cloudflare Pages 读取 wrangler.toml 后跳过构建和不支持 build 字段的问题，移除 wrangler.toml 并明确构建命令必须在 Cloudflare 控制台填写；完成线上数据库数据补齐，新增数据库结构清理脚本并保护本地备份不上传 GitHub。
