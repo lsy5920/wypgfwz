@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { CalendarDays, MapPin, Users, Wifi, Cloud } from "lucide-react";
-import { API, anonHeaders } from "../lib/supabase";
+import { publicApi } from "../lib/supabase";
 
 const seasonActivities = [
   { season: "春·踏青", emoji: "🌸", desc: "探寻城中花期，共赏人间烂漫" },
@@ -15,8 +15,7 @@ export const Activities = () => {
   const [filter, setFilter] = useState<"all" | "online" | "offline">("all");
 
   useEffect(() => {
-    fetch(`${API}/events`, { headers: anonHeaders() })
-      .then(r => r.json())
+    publicApi<{ events?: any[] }>("/events")
       .then(d => { setEvents(d.events ?? []); setLoading(false); });
   }, []);
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Bell, Pin, ChevronDown, ChevronUp, Calendar } from "lucide-react";
-import { API, anonHeaders } from "../lib/supabase";
+import { publicApi } from "../lib/supabase";
 
 const categoryColors: Record<string, string> = {
   "山门公告": "bg-[var(--ink-deep)]/10 text-[var(--ink-deep)]",
@@ -14,8 +14,7 @@ export const Announcements = () => {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    fetch(`${API}/announcements`, { headers: anonHeaders() })
-      .then(r => r.json())
+    publicApi<{ announcements?: any[] }>("/announcements")
       .then(d => { setAnnouncements(d.announcements ?? []); setLoading(false); });
   }, []);
 

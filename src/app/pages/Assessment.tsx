@@ -5,12 +5,13 @@ import { Button } from "../components/ui/button";
 import { AuthModal } from "../components/AuthModal";
 import { questions, PASS_SCORE, TOTAL_QUESTIONS } from "../lib/assessmentQuestions";
 import { useAuth } from "../context/AuthContext";
-import { API, authHeaders } from "../lib/supabase";
+import { authApi } from "../lib/supabase";
 
 type Phase = "intro" | "quiz" | "result";
 
 export const Assessment = () => {
   const { user, session } = useAuth();
+  const hasActiveSession = Boolean(user && session?.access_token);
   const [phase, setPhase] = useState<Phase>("intro");
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [score, setScore] = useState(0);
@@ -28,13 +29,12 @@ export const Assessment = () => {
     setAnswers({});
     setCurrentIndex(0);
     setPrevResult(null);
-    if (!user || !session) { setLoadingPrev(false); return; }
+    if (!hasActiveSession) { setLoadingPrev(false); return; }
     setLoadingPrev(true);
-    fetch(`${API}/quiz-result`, { headers: authHeaders(session.access_token) })
-      .then(r => r.json())
+    authApi<{ result?: any }>("/quiz-result")
       .then(d => { setPrevResult(d.result); setLoadingPrev(false); })
       .catch(() => setLoadingPrev(false));
-  }, [user, session]);
+  }, [hasActiveSession]);
 
   const handleAnswer = (qId: number, optIdx: number) => {
     if (phase !== "quiz") return;
@@ -42,6 +42,11 @@ export const Assessment = () => {
   };
 
   const beginQuiz = () => {
+    if (!hasActiveSession) {
+      setSaveError("登录状态已失效，请重新登录后再参加考核");
+      setAuthOpen(true);
+      return;
+    }
     setAnswers({});
     setScore(0);
     setPassed(false);
@@ -61,40 +66,43 @@ export const Assessment = () => {
   const handleSubmit = async () => {
     setSaveError("");
     if (Object.keys(answers).length < TOTAL_QUESTIONS) return;
+    if (!hasActiveSession) {
+      setSaveError("登录状态已失效，请重新登录后再提交考核");
+      setAuthOpen(true);
+      return;
+    }
     const correctCount = questions.filter(q => answers[q.id] === q.answer).length;
     const finalScore = Math.round((correctCount / TOTAL_QUESTIONS) * 100);
     const didPass = finalScore >= PASS_SCORE;
-    setScore(finalScore);
-    setPassed(didPass);
-    setPhase("result");
 
-    if (user && session) {
-      setSubmitting(true);
-      try {
-        const res = await fetch(`${API}/quiz-result`, {
-          method: "POST",
-          headers: authHeaders(session.access_token),
-          body: JSON.stringify({
-            score: finalScore,
-            total_score: 100,
-            passed: didPass,
-            single_correct: correctCount,
-            multiple_correct: 0,
-            answers,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok || data.error) {
-          setSaveError(data.error || "考核结果保存失败，请稍后重试");
-          return;
-        }
-        setPrevResult({ score: finalScore, passed: didPass });
-      } catch (e) {
-        console.log("save quiz result error:", e);
-        setSaveError("考核结果保存失败，请检查网络后重试");
-      } finally {
-        setSubmitting(false);
+    setSubmitting(true);
+    try {
+      await authApi("/quiz-result", {
+        method: "POST",
+        body: {
+          score: finalScore,
+          total_score: 100,
+          passed: didPass,
+          single_correct: correctCount,
+          multiple_correct: 0,
+          answers,
+        },
+      });
+      // 保存后立即读回确认，避免接口假成功导致用户中心和名册入口仍显示未考核。
+      const verifyData = await authApi<{ result?: any }>("/quiz-result");
+      if (!verifyData.result) {
+        setSaveError("考核结果保存后读取失败，请稍后重试");
+        return;
       }
+      setScore(Number(verifyData.result.score ?? finalScore));
+      setPassed(Boolean(verifyData.result.passed));
+      setPrevResult(verifyData.result);
+      setPhase("result");
+    } catch (e) {
+      console.log("save quiz result error:", e);
+      setSaveError("考核结果保存失败，请检查网络后重试");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -119,7 +127,7 @@ export const Assessment = () => {
       </div>
 
       {/* 未登录时只展示登录引导，不提前展示题目。 */}
-      {!user && phase === "intro" && (
+      {!hasActiveSession && phase === "intro" && (
         <div className="bg-[var(--ink-parchment)] rounded-2xl p-8 border border-[var(--ink-deep)]/8 text-center">
           <div className="w-14 h-14 mx-auto rounded-full bg-[var(--ink-gold)]/15 flex items-center justify-center mb-4">
             <LogIn className="w-7 h-7 text-[var(--ink-gold)]" />
@@ -144,7 +152,7 @@ export const Assessment = () => {
       )}
 
       {/* 历史成绩提示 */}
-      {user && prevResult && phase === "intro" && (
+      {hasActiveSession && prevResult && phase === "intro" && (
         <div className={`mb-6 p-4 rounded-2xl flex items-center gap-3 ${prevResult.passed
           ? "bg-[var(--ink-green)]/10 border border-[var(--ink-green)]/20"
           : "bg-[var(--ink-gold)]/10 border border-[var(--ink-gold)]/20"
@@ -172,7 +180,7 @@ export const Assessment = () => {
       )}
 
       {/* 考核说明 */}
-      {user && phase === "intro" && (
+      {hasActiveSession && phase === "intro" && (
         <div className="bg-[var(--ink-parchment)] rounded-2xl p-8 border border-[var(--ink-deep)]/8">
           <h3 className="font-serif text-lg font-medium text-[var(--ink-deep)] mb-4">考核说明</h3>
           <ul className="space-y-2 text-sm text-[var(--ink-mid)] leading-relaxed mb-6">
@@ -207,7 +215,7 @@ export const Assessment = () => {
       )}
 
       {/* 单题作答 */}
-      {user && phase === "quiz" && currentQuestion && (
+      {hasActiveSession && phase === "quiz" && currentQuestion && (
         <div className="space-y-5">
           <div className="flex items-center justify-between text-xs text-[var(--ink-mid)] mb-2">
             <span>第 {currentIndex + 1} / {TOTAL_QUESTIONS} 题</span>
@@ -255,11 +263,16 @@ export const Assessment = () => {
               </Button>
             )}
           </div>
+          {saveError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-500">
+              {saveError}
+            </div>
+          )}
         </div>
       )}
 
       {/* 结果页只显示分数和金典阅读入口，不展示题目答案。 */}
-      {user && phase === "result" && (
+      {hasActiveSession && phase === "result" && (
         <div className="text-center">
           <div className="inline-flex items-center justify-center w-24 h-24 rounded-full mb-6 bg-[var(--ink-gold)]/15">
             <Feather className="w-12 h-12 text-[var(--ink-gold)]" />

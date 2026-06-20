@@ -6,7 +6,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { useAuth } from "../context/AuthContext";
-import { API, authHeaders } from "../lib/supabase";
+import { authApi } from "../lib/supabase";
 import { AuthModal } from "../components/AuthModal";
 import { adminBadgeLabel, isAdminProfile } from "../lib/permissions";
 
@@ -27,10 +27,12 @@ export const UserCenter = () => {
     setQuizResult(null);
     setApplication(null);
     if (!user || !session) return;
-    fetch(`${API}/quiz-result`, { headers: authHeaders(session.access_token) })
-      .then(r => r.json()).then(d => setQuizResult(d.result));
-    fetch(`${API}/my-application`, { headers: authHeaders(session.access_token) })
-      .then(r => r.json()).then(d => setApplication(d.application));
+    authApi<{ result?: any }>("/quiz-result")
+      .then(d => setQuizResult(d.result))
+      .catch(() => setQuizResult(null));
+    authApi<{ application?: any }>("/my-application")
+      .then(d => setApplication(d.application))
+      .catch(() => setApplication(null));
   }, [user, session]);
 
   useEffect(() => {
@@ -40,10 +42,9 @@ export const UserCenter = () => {
   const saveProfile = async () => {
     if (!session) return;
     setSaving(true);
-    await fetch(`${API}/profile`, {
+    await authApi("/profile", {
       method: "PUT",
-      headers: authHeaders(session.access_token),
-      body: JSON.stringify({ nickname: profile?.nickname, city: editCity, bio: editBio, is_public: profile?.is_public }),
+      body: { nickname: profile?.nickname, city: editCity, bio: editBio, is_public: profile?.is_public },
     });
     await refreshProfile();
     setSaving(false);

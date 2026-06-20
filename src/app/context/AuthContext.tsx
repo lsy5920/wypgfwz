@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { supabase, API, anonHeaders, authHeaders } from "../lib/supabase";
+import { anonHeaders, authApi, supabase } from "../lib/supabase";
 import type { User, Session } from "@supabase/supabase-js";
 
 interface Profile {
@@ -33,8 +33,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchProfile = async (token: string) => {
     try {
-      const res = await fetch(`${API}/profile`, { headers: authHeaders(token) });
-      const data = await res.json();
+      const data = await authApi<{ profile?: Profile }>("/profile", { token });
       if (data.profile) setProfile(data.profile);
     } catch (e) {
       console.log("fetchProfile error:", e);
@@ -85,7 +84,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const refreshProfile = async () => {
-    if (session?.access_token) await fetchProfile(session.access_token);
+    try {
+      const data = await authApi<{ profile?: Profile }>("/profile");
+      if (data.profile) setProfile(data.profile);
+    } catch (e) {
+      console.log("refreshProfile error:", e);
+    }
   };
 
   return (

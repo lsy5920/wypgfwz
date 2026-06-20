@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { BookOpen, Feather, Users, Bell, ChevronRight, MapPin, Scroll, Star, Lamp } from "lucide-react";
-import { API, anonHeaders } from "../lib/supabase";
+import { publicApi } from "../lib/supabase";
 
 const purposes = [
   { icon: "🕯️", title: "陪伴", desc: "使孤者不孤，使疲者可息，得一方可安心言说之地" },
@@ -23,11 +23,9 @@ export const Home = () => {
   const [recentMembers, setRecentMembers] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch(`${API}/announcements`, { headers: anonHeaders() })
-      .then(r => r.json())
+    publicApi<{ announcements?: any[] }>("/announcements")
       .then(d => setAnnouncements(d.announcements?.slice(0, 3) ?? []));
-    fetch(`${API}/members`, { headers: anonHeaders() })
-      .then(r => r.json())
+    publicApi<{ members?: any[] }>("/members")
       .then(d => {
         const members = d.members ?? [];
         setMemberCount(members.length);

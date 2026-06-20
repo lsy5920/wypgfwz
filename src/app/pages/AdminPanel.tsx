@@ -8,7 +8,7 @@ import { Textarea } from "../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../components/ui/dialog";
 import { useAuth } from "../context/AuthContext";
-import { API, authHeaders } from "../lib/supabase";
+import { authApi, publicApi } from "../lib/supabase";
 import { isAdminProfile, isSectLeaderProfile } from "../lib/permissions";
 
 type AdminTab = "applications" | "announcements" | "events" | "members";
@@ -157,12 +157,11 @@ export const AdminPanel = () => {
 
   const loadAll = async () => {
     if (!session) return;
-    const h = authHeaders(session.access_token);
     const [appRes, annRes, evRes, memRes] = await Promise.all([
-      fetch(`${API}/admin/applications`, { headers: h }).then(r => r.json()),
-      fetch(`${API}/announcements`, { headers: h }).then(r => r.json()),
-      fetch(`${API}/events`, { headers: h }).then(r => r.json()),
-      fetch(`${API}/admin/all-members`, { headers: h }).then(r => r.json()),
+      authApi<{ applications?: any[] }>("/admin/applications"),
+      publicApi<{ announcements?: any[] }>("/announcements"),
+      publicApi<{ events?: any[] }>("/events"),
+      authApi<{ members?: any[] }>("/admin/all-members"),
     ]);
     setApplications(appRes.applications ?? []);
     setAnnouncements(annRes.announcements ?? []);
@@ -172,12 +171,10 @@ export const AdminPanel = () => {
 
   const handleApplication = async (id: string, action: "approve" | "reject") => {
     if (!session) return;
-    const res = await fetch(`${API}/admin/applications/${id}`, {
+    const data = await authApi<{ error?: string; memberCode?: string }>(`/admin/applications/${id}`, {
       method: "PUT",
-      headers: authHeaders(session.access_token),
-      body: JSON.stringify({ action }),
+      body: { action },
     });
-    const data = await res.json();
     if (data.error) { setActionMsg(`错误：${data.error}`); return; }
     setActionMsg(action === "approve" ? `已审核通过，编号：${data.memberCode}` : "已拒绝");
     await loadAll();
@@ -185,12 +182,10 @@ export const AdminPanel = () => {
 
   const updateApplicationDraft = async () => {
     if (!session || !editingApplication) return { error: "没有正在查看的申请资料" };
-    const res = await fetch(`${API}/admin/applications/${editingApplication.id}`, {
+    return authApi(`/admin/applications/${editingApplication.id}`, {
       method: "PUT",
-      headers: authHeaders(session.access_token),
-      body: JSON.stringify({ action: "update", ...applicationForm }),
+      body: { action: "update", ...applicationForm },
     });
-    return res.json();
   };
 
   const openApplicationEdit = (application: any) => {
@@ -225,12 +220,10 @@ export const AdminPanel = () => {
         return;
       }
     }
-    const res = await fetch(`${API}/admin/applications/${editingApplication.id}`, {
+    const data = await authApi<{ error?: string; memberCode?: string }>(`/admin/applications/${editingApplication.id}`, {
       method: "PUT",
-      headers: authHeaders(session.access_token),
-      body: JSON.stringify({ action }),
+      body: { action },
     });
-    const data = await res.json();
     setSaving(false);
     if (data.error) { setActionMsg(`错误：${data.error}`); return; }
     setActionMsg(action === "approve" ? `已审核通过，编号：${data.memberCode}` : "已标记为未通过");
@@ -241,12 +234,10 @@ export const AdminPanel = () => {
   const saveMember = async () => {
     if (!session || !editingMember) return;
     setSaving(true);
-    const res = await fetch(`${API}/admin/members/${editingMember.id}`, {
+    const data = await authApi<{ error?: string }>(`/admin/members/${editingMember.id}`, {
       method: "PUT",
-      headers: authHeaders(session.access_token),
-      body: JSON.stringify(memberForm),
+      body: memberForm,
     });
-    const data = await res.json();
     setSaving(false);
     if (data.error) { setActionMsg(`错误：${data.error}`); return; }
     setActionMsg("成员资料已保存");
@@ -256,12 +247,10 @@ export const AdminPanel = () => {
 
   const updateMemberRole = async (member: any, nextRole: "同门" | "执事") => {
     if (!session) return;
-    const res = await fetch(`${API}/admin/members/${member.id}/role`, {
+    const data = await authApi<{ error?: string }>(`/admin/members/${member.id}/role`, {
       method: "PUT",
-      headers: authHeaders(session.access_token),
-      body: JSON.stringify({ member_role: nextRole }),
+      body: { member_role: nextRole },
     });
-    const data = await res.json();
     if (data.error) { setActionMsg(`错误：${data.error}`); return; }
     setActionMsg(nextRole === "执事" ? "已任命为执事" : "已撤销执事身份");
     await loadAll();
@@ -270,12 +259,10 @@ export const AdminPanel = () => {
   const handleAnnSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!session) return;
-    const res = await fetch(`${API}/admin/announcements`, {
+    const data = await authApi<{ error?: string }>("/admin/announcements", {
       method: "POST",
-      headers: authHeaders(session.access_token),
-      body: JSON.stringify(annForm),
+      body: annForm,
     });
-    const data = await res.json();
     if (data.error) { setActionMsg(`错误：${data.error}`); return; }
     setActionMsg("公告发布成功");
     setShowAnnForm(false);
@@ -285,7 +272,7 @@ export const AdminPanel = () => {
 
   const handleAnnDelete = async (id: string) => {
     if (!session || !confirm("确认删除此公告？")) return;
-    await fetch(`${API}/admin/announcements/${id}`, { method: "DELETE", headers: authHeaders(session.access_token) });
+    await authApi(`/admin/announcements/${id}`, { method: "DELETE" });
     setActionMsg("公告已删除");
     await loadAll();
   };
@@ -293,12 +280,10 @@ export const AdminPanel = () => {
   const handleEvSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!session) return;
-    const res = await fetch(`${API}/admin/events`, {
+    const data = await authApi<{ error?: string }>("/admin/events", {
       method: "POST",
-      headers: authHeaders(session.access_token),
-      body: JSON.stringify(evForm),
+      body: evForm,
     });
-    const data = await res.json();
     if (data.error) { setActionMsg(`错误：${data.error}`); return; }
     setActionMsg("活动发布成功");
     setShowEvForm(false);
@@ -308,7 +293,7 @@ export const AdminPanel = () => {
 
   const handleEvDelete = async (id: string) => {
     if (!session || !confirm("确认删除此活动？")) return;
-    await fetch(`${API}/admin/events/${id}`, { method: "DELETE", headers: authHeaders(session.access_token) });
+    await authApi(`/admin/events/${id}`, { method: "DELETE" });
     setActionMsg("活动已删除");
     await loadAll();
   };

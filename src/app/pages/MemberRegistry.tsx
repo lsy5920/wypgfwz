@@ -8,7 +8,7 @@ import { Textarea } from "../components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { AuthModal } from "../components/AuthModal";
 import { useAuth } from "../context/AuthContext";
-import { API, anonHeaders, authHeaders } from "../lib/supabase";
+import { authApi, publicApi } from "../lib/supabase";
 
 const roleLabel = (role: string) => {
   if (role === "执事") return { text: "执事", cls: "bg-[var(--ink-gold)]/15 text-[var(--ink-gold)]" };
@@ -37,8 +37,7 @@ export const MemberRegistry = () => {
   });
 
   useEffect(() => {
-    fetch(`${API}/members`, { headers: anonHeaders() })
-      .then(r => r.json())
+    publicApi<{ members?: any[] }>("/members")
       .then(d => { setMembers(d.members ?? []); setLoading(false); });
 
     // 公开名册始终可浏览，下面只刷新当前登录用户的登记入口状态。
@@ -51,11 +50,9 @@ export const MemberRegistry = () => {
 
     if (user && session) {
       Promise.all([
-        fetch(`${API}/quiz-result`, { headers: authHeaders(session.access_token) })
-          .then(r => r.json())
+        authApi<{ result?: any }>("/quiz-result")
           .then(d => setQuizPassed(d.result?.passed ?? false)),
-        fetch(`${API}/my-application`, { headers: authHeaders(session.access_token) })
-          .then(r => r.json())
+        authApi<{ application?: any }>("/my-application")
           .then(d => setMyApplication(d.application)),
       ]).finally(() => setEntryLoading(false));
     }
@@ -74,17 +71,16 @@ export const MemberRegistry = () => {
       return;
     }
     setSubmitting(true);
-    const res = await fetch(`${API}/join-application`, {
-      method: "POST",
-      headers: authHeaders(session.access_token),
-      body: JSON.stringify(form),
-    });
-    const data = await res.json();
-    setSubmitting(false);
-    if (data.error) { setSubmitError(data.error); return; }
-    setSubmitSuccess(true);
-    setMyApplication({ status: "pending", ...form });
-    setShowForm(false);
+    try {
+      await authApi("/join-application", { method: "POST", body: form });
+      setSubmitSuccess(true);
+      setMyApplication({ status: "pending", ...form });
+      setShowForm(false);
+    } catch (e: any) {
+      setSubmitError(e?.message || "入册申请提交失败，请稍后重试");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const field = (key: keyof typeof form, label: string, hint?: string) => (
