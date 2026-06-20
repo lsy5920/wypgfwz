@@ -130,6 +130,8 @@ NODE_VERSION=22.16.0
 
 本项目已经新增 `wrangler.toml`，其中声明了项目名、兼容日期和构建输出目录；同时新增 `.nvmrc` 与 `.node-version`，用于明确 Node.js 版本，减少云端构建环境差异。
 
+注意：Cloudflare Pages 当前不支持在 `wrangler.toml` 中配置构建命令，所以 `npm run build` 必须在 Cloudflare Pages 控制台的构建设置里填写。如果控制台构建命令为空，Cloudflare 会跳过构建步骤，随后因为找不到 `dist` 目录而部署失败。
+
 ### 部署 Supabase 后端函数
 
 Cloudflare Pages 负责部署前端静态页面，公告、活动、登录、成员名册和后台管理仍然访问 Supabase 后端函数。
@@ -236,11 +238,13 @@ wypgfwz
 
 ### Cloudflare Pages 构建失败并提示找不到构建命令
 
-请检查 Cloudflare Pages 的构建命令是否填写为：
+请进入 Cloudflare Pages 项目的“设置 - 构建与部署”，检查构建命令是否填写为：
 
 ```text
 npm run build
 ```
+
+如果部署日志出现 `No build command specified. Skipping build step.`，说明 Cloudflare 控制台没有填写构建命令；只改 `wrangler.toml` 无法解决，因为 Pages 配置文件不支持 `build` 字段。
 
 ### Cloudflare Pages 部署后页面空白
 

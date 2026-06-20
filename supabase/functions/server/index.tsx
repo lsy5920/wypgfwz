@@ -430,7 +430,7 @@ app.get("/make-server-0e17939c/events", async (c) => {
       .select("*")
       .order("created_at", { ascending: false });
     if (error) return c.json({ error: error.message }, 500 as any);
-    return c.json({ events: data });
+    return c.json({ events: (data ?? []).map(normalizeEventRecord) });
   } catch (e) {
     console.log("get events error:", e);
     return c.json({ error: String(e) }, 500 as any);
@@ -513,7 +513,7 @@ app.post("/make-server-0e17939c/join-application", async (c) => {
         .single(),
     );
     if (error) return c.json({ error: error.message }, 500 as any);
-    return c.json({ success: true, application: data });
+    return c.json({ success: true, application: normalizeApplicationRecord(data) });
   } catch (e) {
     console.log("join application error:", e);
     return c.json({ error: String(e) }, 500 as any);
@@ -530,7 +530,7 @@ app.get("/make-server-0e17939c/my-application", async (c) => {
       .eq("user_id", user.id)
       .maybeSingle();
     if (error) return c.json({ error: error.message }, 500 as any);
-    return c.json({ application: data });
+    return c.json({ application: normalizeApplicationRecord(data) });
   } catch (e) {
     console.log("my application error:", e);
     return c.json({ error: String(e) }, 500 as any);
@@ -550,7 +550,7 @@ app.get("/make-server-0e17939c/admin/applications", async (c) => {
       .select("*")
       .order("created_at", { ascending: false });
     if (error) return c.json({ error: error.message }, 500 as any);
-    return c.json({ applications: data });
+    return c.json({ applications: (data ?? []).map(normalizeApplicationRecord) });
   } catch (e) {
     console.log("admin applications error:", e);
     return c.json({ error: String(e) }, 500 as any);
@@ -786,21 +786,29 @@ app.post("/make-server-0e17939c/admin/events", async (c) => {
       return c.json({ error: "forbidden" }, 403 as any);
     }
     const body = await c.req.json();
-    const { data, error } = await adminClient()
-      .from("events")
-      .insert({
+    const eventType = normalizeEventType(body.event_type ?? body.mode ?? body.type);
+    const eventDate = body.event_date || body.event_time || null;
+    const { data, error } = await writeWithColumnFallback(
+      {
         title: body.title,
         description: body.description,
-        event_date: body.event_date || null,
+        event_date: eventDate,
+        event_time: eventDate,
         location: body.location || null,
-        event_type: body.event_type || "online",
+        event_type: eventType,
+        mode: eventType,
+        type: eventType,
         status: body.status || "upcoming",
         organizer: body.organizer || null,
-      })
-      .select()
-      .single();
+      },
+      (payload) => adminClient()
+        .from("events")
+        .insert(payload)
+        .select()
+        .single(),
+    );
     if (error) return c.json({ error: error.message }, 500 as any);
-    return c.json({ success: true, event: data });
+    return c.json({ success: true, event: normalizeEventRecord(data) });
   } catch (e) {
     console.log("post event error:", e);
     return c.json({ error: String(e) }, 500 as any);
@@ -846,8 +854,9 @@ app.get("/make-server-0e17939c/admin/all-members", async (c) => {
       .from("profiles")
       .select("id,nickname,role,city,bio,is_public,created_at,updated_at");
 
-    const applicationByCode = new Map((applications ?? []).map((item: any) => [item.member_code, item]));
-    const applicationByDaoName = new Map((applications ?? []).map((item: any) => [item.dao_name ?? item.nickname, item]));
+    const normalizedApplications = (applications ?? []).map(normalizeApplicationRecord);
+    const applicationByCode = new Map(normalizedApplications.map((item: any) => [item.member_code, item]));
+    const applicationByDaoName = new Map(normalizedApplications.map((item: any) => [item.dao_name ?? item.nickname, item]));
     const profileById = new Map((profiles ?? []).map((item: any) => [item.id, item]));
     const profileByNickname = new Map((profiles ?? []).map((item: any) => [item.nickname, item]));
 
