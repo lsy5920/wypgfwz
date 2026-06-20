@@ -1,0 +1,4 @@
+# Cloudflare Pages 部署配置，保证从 GitHub 自动构建时能识别项目和输出目录。
+name = "wenyunpai-web"
+compatibility_date = "2026-06-20"
+pages_build_output_dir = "dist"
