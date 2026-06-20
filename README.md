@@ -236,10 +236,10 @@ wypgfwz
 │     ├─ lib                  接口、题库等公共逻辑
 │     └─ pages                各个页面代码
 ├─ supabase                   Supabase 后端函数与相关代码
+│  ├─ database-cleanup.sql     数据库结构清理脚本，需在 Supabase SQL 编辑器中手动执行
 │  └─ functions
 │     ├─ server               后台业务代码统一维护目录
 │     └─ make-server-0e17939c 线上函数入口目录，保持前端接口地址可直接访问
-│  └─ database-cleanup.sql     数据库结构清理脚本，需在 Supabase SQL 编辑器中手动执行
 ├─ utils                      Supabase 项目信息配置
 ├─ guidelines                 项目辅助说明目录
 ├─ plans                      开发计划与需求记录目录
